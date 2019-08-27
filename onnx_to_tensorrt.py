@@ -125,11 +125,12 @@ def main():
 
     # Run the post-processing algorithms on the TensorRT outputs and get the bounding box details of detected objects
     boxes, classes, scores = postprocessor.process(trt_outputs, (shape_orig_WH))
+    
     # Draw the bounding boxes onto the original input image and save it as a PNG file
-    # obj_detected_img = draw_bboxes(image_raw, boxes, scores, classes, ALL_CATEGORIES)
-    # output_image_path = 'dog_bboxes.png'
-    # obj_detected_img.save(output_image_path, 'PNG')
-    # print('Saved image with bounding boxes of detected objects to {}.'.format(output_image_path))
+    obj_detected_img = draw_bboxes(image_raw, boxes, scores, classes, ALL_CATEGORIES)
+    output_image_path = 'dog_bboxes.png'
+    obj_detected_img.save(output_image_path, 'PNG')
+    print('Saved image with bounding boxes of detected objects to {}.'.format(output_image_path))
 
 if __name__ == '__main__':
     main()
