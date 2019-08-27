@@ -136,13 +136,13 @@ class DarkNetParser(object):
         if remainder.replace(' ', '')[0] == '#':
             remainder = remainder.split('\n', 1)[1]
         
-        print('\n\n\nremainder : ', remainder)
+        #print('\n\n\nremainder : ', remainder)
         layer_param_block, remainder = remainder.split('\n\n', 1)
         layer_param_lines = layer_param_block.split('\n')[1:]
         layer_name = str(self.layer_counter).zfill(3) + '_' + layer_type
         #layer_name = str(self.layer_counter).zfill(3) + '_' + layer_type.decode()
-        #layer_dict = dict(type=layer_type)
-        layer_dict = {};    layer_dict['type'] = layer_type
+        layer_dict = dict(type=layer_type)
+        #layer_dict = {};    layer_dict['type'] = layer_type
         #print('layer_type : ', layer_type);
         if layer_type in self.supported_layers:
             #print('layer_type is in self.supported_layers')
@@ -156,7 +156,7 @@ class DarkNetParser(object):
                 layer_dict[param_type] = param_value
         #exit()
         self.layer_counter += 1
-        print('layer_name : ', layer_name); print('layer_dict : ', layer_dict); #exit()
+        #print('layer_name : ', layer_name); print('layer_dict : ', layer_dict); #exit()
         return layer_dict, layer_name, remainder
 
     def _parse_params(self, param_line):
@@ -739,6 +739,28 @@ class GraphBuilderONNX(object):
         return layer_name, channels
 
 
+    def _make_maxpool_node(self, layer_name, layer_dict):
+        
+        stride = layer_dict['stride']
+        kernel_size = layer_dict['size']
+        previous_node_specs = self._get_previous_node_specs()
+        inputs = [previous_node_specs.name]
+        assert inputs
+        channels = previous_node_specs.channels
+        assert channels > 0
+        kernel_shape = [kernel_size, kernel_size]
+        strides = [stride, stride]
+        maxpool_node = helper.make_node(
+            'MaxPool',
+            inputs = inputs,
+            outputs = [layer_name],
+            kernel_shape = kernel_shape,
+            strides = strides,
+            auto_pad = 'SAME_UPPER',
+            name = layer_name,)
+        self._nodes.append(maxpool_node)
+        return layer_name, channels
+
 def generate_md5_checksum(local_path):
     """Returns the MD5 checksum of a local file.
 
@@ -791,16 +813,26 @@ def download_file(local_path, link, checksum_reference=None):
                 (checksum, local_path, checksum_reference))
     return local_path
 
-def get_output_tensor_dims(v_yolo):
-
+def get_output_tensor_dims(v_yolo, said):
+    kernel_1 = int(said / 32)
+    kernel_2 = int(kernel_1 * 2)
+    kernel_3 = int(kernel_2 * 2)
+    n_cls = 1 if '1' in v_yolo else 80
+    box_coord_obj_cls = 3 * (4 + 1 + n_cls) 
     output_tensor_dims = OrderedDict()
-    if 'v3' == v_yolo:
-        output_tensor_dims['082_convolutional'] = [255, 19, 19]
-        output_tensor_dims['094_convolutional'] = [255, 38, 38]
-        output_tensor_dims['106_convolutional'] = [255, 76, 76]
-    elif 'v3-tiny' == v_yolo:
-        output_tensor_dims['016_convolutional'] = [255, 19, 19]
-        output_tensor_dims['023_convolutional'] = [255, 38, 38]       
+    if v_yolo.startswith('v3'):
+        if v_yolo.endswith('tiny'):
+            #   18 = 3 * 6 = 3 * (4 + 1 + 1) = 3 boxes * (4 coordinates + 1 objectness + 1 classes)
+            output_tensor_dims['016_convolutional'] = [box_coord_obj_cls, kernel_1, kernel_1]
+            output_tensor_dims['023_convolutional'] = [box_coord_obj_cls, kernel_2, kernel_2]  
+        elif v_yolo.endswidth('spp'):
+            #   255 = 3 * 85 = 3 * (4 + 1 + 80) = 3 boxes * (4 coordinates + 1 objectness + 80 classes)
+            output_tensor_dims['082_convolutional'] = [box_coord_obj_cls, kernel_1, kernel_1]
+            output_tensor_dims['094_convolutional'] = [box_coord_obj_cls, kernel_2, kernel_2]
+            output_tensor_dims['106_convolutional'] = [box_coord_obj_cls, kernel_3, kernel_3]
+    elif v_yolo.startswith('v2'):
+        a = 0
+    #print('output_tensor_dims : ', output_tensor_dims); exit() 
     return output_tensor_dims
 
 def main():
@@ -815,6 +847,8 @@ def main():
     '''
     # Download the config for YOLOv3 if not present yet, and analyze the checksum:
     cfg_local_path = 'yolo{}.cfg'.format(v_yolo)
+    cfg_file_path = cfg_local_path
+    '''
     #url_cfg = get_cfg_url_yolo(v_yolo)
     checksum_ref = get_checksum_yolo(v_yolo, False)
     cfg_file_path = download_file(
@@ -825,11 +859,11 @@ def main():
         #, 'b969a43a848bbf26901643b833cfb96c')
         , checksum_ref)
         #)
-
+    '''
     # These are the only layers DarkNetParser will extract parameters from. The three layers of
     # type 'yolo' are not parsed in detail because they are included in the post-processing later:
     supported_layers = ['net', 'convolutional', 'shortcut',
-                        'route', 'upsample']
+                        'route', 'upsample', 'maxpool']
 
     # Create a DarkNetParser object, and the use it to generate an OrderedDict with all
     # layer's configs from the cfg file:
@@ -841,7 +875,7 @@ def main():
 
     # In above layer_config, there are three outputs that we need to know the output
     # shape of (in CHW format):
-    output_tensor_dims = get_output_tensor_dims(v_yolo)
+    output_tensor_dims = get_output_tensor_dims(v_yolo, said)
     '''
     output_tensor_dims = OrderedDict()
     output_tensor_dims['082_convolutional'] = [255, 19, 19]

@@ -78,17 +78,24 @@ def get_engine(onnx_file_path, engine_file_path=""):
         return build_engine()
 
 def main():
+    
+    #########################################################################
+    #   $ python3 onnx_to_tensorrt.py v3 608
+    #########################################################################
+    
+    v_yolo = sys.argv[1] 
+    said = int(sys.argv[2]) 
     """Create a TensorRT engine for ONNX-based YOLOv3-608 and run inference."""
 
     # Try to load a previously generated YOLOv3-608 network graph in ONNX format:
-    onnx_file_path = 'yolov3.onnx'
-    engine_file_path = "yolov3.trt"
+    onnx_file_path = 'yolo{}.onnx'.format(v_yolo)
+    engine_file_path = 'yolo{}.trt'.format(v_yolo)
     # Download a dog image and save it to the following file path:
     input_image_path = download_file('dog.jpg',
         'https://github.com/pjreddie/darknet/raw/f86901f6177dfc6116360a13cc06ab680e0c86b0/data/dog.jpg', checksum_reference=None)
 
     # Two-dimensional tuple with the target network's (spatial) input resolution in HW ordered
-    input_resolution_yolov3_HW = (608, 608)
+    input_resolution_yolov3_HW = (said, said)
     # Create a pre-processor object by specifying the required input resolution for YOLOv3
     preprocessor = PreprocessYOLO(input_resolution_yolov3_HW)
     # Load an image from the specified input path, and return it together with  a pre-processed version
