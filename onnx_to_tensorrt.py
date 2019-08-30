@@ -77,19 +77,59 @@ def get_engine(onnx_file_path, engine_file_path=""):
     else:
         return build_engine()
 
+def get_output_shapes(v_yolo, said):
+    
+    kernel_1 = int(said / 32)
+    kernel_2 = int(kernel_1 * 2)
+    kernel_3 = int(kernel_2 * 2)
+    n_cls = 1 if '1' in v_yolo else 80
+    box_coord_obj_cls = 3 * (4 + 1 + n_cls)   
+    output_shapes = []
+    if v_yolo.startswith('v3'):
+        output_shapes.append((1, box_coord_obj_cls, kernel_1, kernel_1))
+        output_shapes.append((1, box_coord_obj_cls, kernel_2, kernel_2))
+        if not v_yolo.endswith('tiny'):
+            output_shapes.append((1, box_coord_obj_cls, kernel_3, kernel_3))
+    #print('output_shapes : ', output_shapes);   exit()
+    return output_shapes 
+
+def get_exact_file_name_from_path(str_path):
+    return os.path.splitext(os.path.basename(str_path))[0]
+
+def get_postprocessor_args(v_yolo, input_resolution_yolov3_HW):
+    li_mask = []
+    li_anchor = []
+    th_objectness = 0.6
+    th_nms = 0.5
+    if v_yolo.startswith('v3'):
+        li_mask = [(3, 4, 5), (0, 1, 2)]
+        if v_yolo.endswith('tiny'):
+            th_objectness = 0.3
+            th_nms = 0.3
+            li_anchor = [(10, 14), (23, 27), (37, 58), (81, 82), (135, 169), (344, 319)]
+        else:
+            li_mask.insert(0, (6, 7, 8))
+            li_anchor = [(10, 13), (16, 30), (33, 23), (30, 61), (62, 45), (59, 119), (116, 90), (156, 198), (373, 326)]
+    postprocessor_args = {"yolo_masks" : li_mask, "yolo_anchors" : li_anchor, "obj_threshold" : th_objectness, "nms_threshold" : th_nms, "yolo_input_resolution" : input_resolution_yolov3_HW}    
+    return postprocessor_args
+
+
 def main():
     
     #########################################################################
     #   $ python3 onnx_to_tensorrt.py v3 608
     #########################################################################
-    
-    v_yolo = sys.argv[1] 
-    said = int(sys.argv[2]) 
+    onnx_file_path = sys.argv[1]
+    t1, t2 = get_exact_file_name_from_path(onnx_file_path).split('_')
+    v_yolo = t1[4:]
+    said = int(t2)
+    #print('v_yolo : ', v_yolo, ', said : ', said);  exit()
+    #said = int(sys.argv[2]) 
     """Create a TensorRT engine for ONNX-based YOLOv3-608 and run inference."""
 
     # Try to load a previously generated YOLOv3-608 network graph in ONNX format:
-    onnx_file_path = 'yolo{}.onnx'.format(v_yolo)
-    engine_file_path = 'yolo{}.trt'.format(v_yolo)
+    #onnx_file_path = 'yolo{}_{}.onnx'.format(v_yolo, said)
+    engine_file_path = 'yolo{}_{}.trt'.format(v_yolo, said)
     # Download a dog image and save it to the following file path:
     input_image_path = download_file('dog.jpg',
         'https://github.com/pjreddie/darknet/raw/f86901f6177dfc6116360a13cc06ab680e0c86b0/data/dog.jpg', checksum_reference=None)
@@ -102,9 +142,10 @@ def main():
     image_raw, image = preprocessor.process(input_image_path)
     # Store the shape of the original input image in WH format, we will need it for later
     shape_orig_WH = image_raw.size
-
+    #print('image_raw.size : ', image_raw.size);     print('image.size : ', image.size); exit()
     # Output shapes expected by the post-processor
-    output_shapes = [(1, 255, 19, 19), (1, 255, 38, 38), (1, 255, 76, 76)]
+    #output_shapes = [(1, 255, 19, 19), (1, 255, 38, 38), (1, 255, 76, 76)]
+    output_shapes = get_output_shapes(v_yolo, said)
     # Do inference with TensorRT
     trt_outputs = []
     with get_engine(onnx_file_path, engine_file_path) as engine, engine.create_execution_context() as context:
@@ -113,21 +154,36 @@ def main():
         print('Running inference on image {}...'.format(input_image_path))
         # Set host input to the image. The common.do_inference function will copy the input to the GPU before executing.
         inputs[0].host = image
+        '''
+        print('len(inputs) : ', len(inputs));   #   1   
+        print('len(outputs) : ', len(outputs));   # 2 for v3-tiny, 3 for v3 #exit()
+        print('type(stream) : ', type(stream));  exit()
+        print('type(outputs[0] : ', type(outputs[0]));  #exit()
+        print('type(outputs[1] : ', type(outputs[1]));  exit()
+        '''
         # start = time.time()
         trt_outputs = common.do_inference(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream)
         # print("time: %.2f s" %(time.time()-start))
+        ''' 
+        print('len(trt_outputs) : ', len(trt_outputs));
+        print('trt_outputs[0].shape : ', trt_outputs[0].shape)
+        print('trt_outputs[1].shape : ', trt_outputs[1].shape); exit()
+        '''
         print(trt_outputs)
 
     # Before doing post-processing, we need to reshape the outputs as the common.do_inference will give us flat arrays.
     trt_outputs = [output.reshape(shape) for output, shape in zip(trt_outputs, output_shapes)]
 
+    postprocessor_args = get_postprocessor_args(v_yolo, input_resolution_yolov3_HW)
+    #print('postprocessor_args : ', postprocessor_args); exit()
+    '''
     postprocessor_args = {"yolo_masks": [(6, 7, 8), (3, 4, 5), (0, 1, 2)],                    # A list of 3 three-dimensional tuples for the YOLO masks
                           "yolo_anchors": [(10, 13), (16, 30), (33, 23), (30, 61), (62, 45),  # A list of 9 two-dimensional tuples for the YOLO anchors
                                            (59, 119), (116, 90), (156, 198), (373, 326)],
                           "obj_threshold": 0.6,                                               # Threshold for object coverage, float value between 0 and 1
                           "nms_threshold": 0.5,                                               # Threshold for non-max suppression algorithm, float value between 0 and 1
                           "yolo_input_resolution": input_resolution_yolov3_HW}
-
+    '''
     postprocessor = PostprocessYOLO(**postprocessor_args)
 
     # Run the post-processing algorithms on the TensorRT outputs and get the bounding box details of detected objects
@@ -135,7 +191,7 @@ def main():
     
     # Draw the bounding boxes onto the original input image and save it as a PNG file
     obj_detected_img = draw_bboxes(image_raw, boxes, scores, classes, ALL_CATEGORIES)
-    output_image_path = 'dog_bboxes.png'
+    output_image_path = 'dog_bboxes_{}_{}.png'.format(v_yolo, said)
     obj_detected_img.save(output_image_path, 'PNG')
     print('Saved image with bounding boxes of detected objects to {}.'.format(output_image_path))
 

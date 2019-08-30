@@ -111,6 +111,10 @@ class PostprocessYOLO(object):
         self.input_resolution_yolo = yolo_input_resolution
 
     def process(self, outputs, resolution_raw):
+        #print('len(outputs) : ');    print(len(outputs)); # 2 for v3-tiny, 3 for v3
+        #for i in range(len(outputs)): print('outputs[i].shape : ', outputs[i].shape)
+        #   (1, 255, 19, 19)    (1, 255, 38, 38)    (1, 255, 76, 76)    for v3_608 
+        #   (1, 255, 19, 19)    (1, 255, 38, 38)                        for v3-tiny_608 
         """Take the YOLOv3 outputs generated from a TensorRT forward pass, post-process them
         and return a list of bounding boxes for detected object together with their category
         and their confidences in separate lists.
@@ -121,8 +125,9 @@ class PostprocessYOLO(object):
         """
         outputs_reshaped = list()
         for output in outputs:
+            #t1  = self._reshape_output(output); print('output.shape : ', output.shape, ', t1.shape : ', t1.shape);  exit()
             outputs_reshaped.append(self._reshape_output(output))
-
+        #print('resolution_raw : ', resolution_raw); exit()
         boxes, categories, confidences = self._process_yolo_output(
             outputs_reshaped, resolution_raw)
 
@@ -158,17 +163,22 @@ class PostprocessYOLO(object):
         # respective masks. Then we iterate through all output-mask pairs and generate candidates
         # for bounding boxes, their corresponding category predictions and their confidences:
         boxes, categories, confidences = list(), list(), list()
+        '''
+        print('self.masks : ', self.masks); #   [(6, 7, 8), (3, 4, 5), (0, 1, 2)] for v3, [(3, 4, 5), (0, 1, 2)] for v3-tiny 
+        print('len(outputs_reshaped) : ', len(outputs_reshaped)); exit()    #   2 for v3-tiny, 3 for v3
+        '''
         for output, mask in zip(outputs_reshaped, self.masks):
             box, category, confidence = self._process_feats(output, mask)
             box, category, confidence = self._filter_boxes(box, category, confidence)
             boxes.append(box)
             categories.append(category)
             confidences.append(confidence)
-
         boxes = np.concatenate(boxes)
         categories = np.concatenate(categories)
         confidences = np.concatenate(confidences)
 
+        #print('boxes.shape : ', boxes.shape); exit()    #   (0, 4) for v3-tiny
+        
         # Scale boxes back to original image shape:
         width, height = resolution_raw
         image_dims = [width, height, width, height]

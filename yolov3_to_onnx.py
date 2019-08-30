@@ -310,6 +310,7 @@ class WeightLoader(object):
         Keyword argument:
         conv_params -- a ConvParams object
         """
+        #print('conv_params : ', conv_params);   exit()
         initializer = list()
         inputs = list()
         if conv_params.batch_normalize:
@@ -398,7 +399,7 @@ class WeightLoader(object):
 class GraphBuilderONNX(object):
     """Class for creating an ONNX graph from a previously generated list of layer dictionaries."""
 
-    def __init__(self, output_tensors):
+    def __init__(self, output_tensors, side_letterbox):
         """Initialize with all DarkNet default parameters used creating YOLOv3,
         and specify the output tensors as an OrderedDict for their output dimensions
         with their names as keys.
@@ -417,6 +418,8 @@ class GraphBuilderONNX(object):
         self.param_dict = OrderedDict()
         self.major_node_specs = list()
         self.batch_size = 1
+        self.said = side_letterbox
+        #print('self.said : ', self.said);   exit()
 
     def build_onnx_graph(
             self,
@@ -442,10 +445,15 @@ class GraphBuilderONNX(object):
         for tensor_name in self.output_tensors.keys():
             output_dims = [self.batch_size, ] + \
                 self.output_tensors[tensor_name]
+            #print('output_dims : ', output_dims);   exit()
             output_tensor = helper.make_tensor_value_info(
                 tensor_name, TensorProto.FLOAT, output_dims)
             outputs.append(output_tensor)
+            #print('tensor_name : ', tensor_name);   exit()
+            #print('outputs : ', outputs);   exit()
         inputs = [self.input_tensor]
+
+        #print('weights_file_path : ', weights_file_path);   exit()
         weight_loader = WeightLoader(weights_file_path)
         initializer = list()
         # If a layer has parameters, add them to the initializer and input lists.
@@ -463,6 +471,7 @@ class GraphBuilderONNX(object):
                 initializer.extend(initializer_layer)
                 inputs.extend(inputs_layer)
         del weight_loader
+        #print('outputs : ', outputs);   exit()
         self.graph_def = helper.make_graph(
             nodes=self._nodes,
             name='YOLOv3-608',
@@ -470,10 +479,13 @@ class GraphBuilderONNX(object):
             outputs=outputs,
             initializer=initializer
         )
+        #print(helper.printable_graph(self.graph_def));  exit()
         if verbose:
             print(helper.printable_graph(self.graph_def))
         model_def = helper.make_model(self.graph_def,
                                       producer_name='NVIDIA TensorRT sample')
+        #print('type(model_def) : ', type(model_def));    #  onnx.onnx_ONNX_RELEASE_ml_pb2.ModelProto
+        #print('dir(model_def) : ', dir(model_def));    exit()
         return model_def
 
     def _make_onnx_node(self, layer_name, layer_dict):
@@ -503,7 +515,7 @@ class GraphBuilderONNX(object):
             node_creators['shortcut'] = self._make_shortcut_node
             node_creators['route'] = self._make_route_node
             node_creators['upsample'] = self._make_upsample_node
-
+            node_creators['maxpool'] = self._make_maxpool_node
             if layer_type in node_creators.keys():
                 major_node_output_name, major_node_output_channels = \
                     node_creators[layer_type](layer_name, layer_dict)
@@ -527,8 +539,10 @@ class GraphBuilderONNX(object):
         #print('layer_dict.keys() : ', layer_dict.keys());   exit() 
         batch_size = layer_dict['batch']
         channels = layer_dict['channels']
-        height = layer_dict['height']
-        width = layer_dict['width']
+        if self.said >= 0:
+            height = self.said;  width = self.said;
+        else:       
+            height = layer_dict['height'];  width = layer_dict['width']
         self.batch_size = batch_size
         input_tensor = helper.make_tensor_value_info(
             str(layer_name), TensorProto.FLOAT, [
@@ -822,10 +836,13 @@ def get_output_tensor_dims(v_yolo, said):
     output_tensor_dims = OrderedDict()
     if v_yolo.startswith('v3'):
         if v_yolo.endswith('tiny'):
+            #box_coord_obj_cls = 18
             #   18 = 3 * 6 = 3 * (4 + 1 + 1) = 3 boxes * (4 coordinates + 1 objectness + 1 classes)
             output_tensor_dims['016_convolutional'] = [box_coord_obj_cls, kernel_1, kernel_1]
             output_tensor_dims['023_convolutional'] = [box_coord_obj_cls, kernel_2, kernel_2]  
-        elif v_yolo.endswidth('spp'):
+        elif v_yolo.endswith('spp'):
+            a = 0
+        else:    
             #   255 = 3 * 85 = 3 * (4 + 1 + 80) = 3 boxes * (4 coordinates + 1 objectness + 80 classes)
             output_tensor_dims['082_convolutional'] = [box_coord_obj_cls, kernel_1, kernel_1]
             output_tensor_dims['094_convolutional'] = [box_coord_obj_cls, kernel_2, kernel_2]
@@ -883,7 +900,7 @@ def main():
     output_tensor_dims['106_convolutional'] = [255, 76, 76]
     '''
     # Create a GraphBuilderONNX object with the known output tensor dimensions:
-    builder = GraphBuilderONNX(output_tensor_dims)
+    builder = GraphBuilderONNX(output_tensor_dims, said)
 
     # We want to populate our network with weights later, that's why we download those from
     # the official mirror (and verify the checksum):
@@ -911,7 +928,7 @@ def main():
 
     # Serialize the generated ONNX graph to this file:
     #output_file_path = 'yolov3.onnx'
-    output_file_path = 'yolo{}.onnx'.format(v_yolo)
+    output_file_path = 'yolo{}_{}.onnx'.format(v_yolo, said)
     onnx.save(yolov3_model_def, output_file_path)
 
 if __name__ == '__main__':
