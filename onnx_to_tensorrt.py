@@ -119,8 +119,10 @@ def main():
     #########################################################################
     #   $ python3 onnx_to_tensorrt.py v3 608
     #########################################################################
-    onnx_file_path = sys.argv[1]
-    t1, t2 = get_exact_file_name_from_path(onnx_file_path).split('_')
+    dir_onnx = sys.argv[1]; fn_onnx = sys.argv[2]
+    onnx_file_path = os.path.join(dir_onnx, fn_onnx)
+    #print('fn_onnx : ', fn_onnx);   exit()
+    t1, t2 = get_exact_file_name_from_path(fn_onnx).split('_')
     v_yolo = t1[4:]
     said = int(t2)
     #print('v_yolo : ', v_yolo, ', said : ', said);  exit()
@@ -129,7 +131,8 @@ def main():
 
     # Try to load a previously generated YOLOv3-608 network graph in ONNX format:
     #onnx_file_path = 'yolo{}_{}.onnx'.format(v_yolo, said)
-    engine_file_path = 'yolo{}_{}.trt'.format(v_yolo, said)
+    engine_file_path = os.path.join(dir_onnx, 'yolo{}_{}.trt'.format(v_yolo, said))
+    
     # Download a dog image and save it to the following file path:
     input_image_path = download_file('dog.jpg',
         'https://github.com/pjreddie/darknet/raw/f86901f6177dfc6116360a13cc06ab680e0c86b0/data/dog.jpg', checksum_reference=None)

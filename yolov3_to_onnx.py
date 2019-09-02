@@ -853,8 +853,11 @@ def get_output_tensor_dims(v_yolo, said):
     return output_tensor_dims
 
 def main():
-    v_yolo = sys.argv[1] 
-    said = int(sys.argv[2]) 
+    
+    #print('sys.argv : ', sys.argv); #exit()
+    dir_onnx = sys.argv[1]
+    v_yolo = sys.argv[2] 
+    said = int(sys.argv[3]) 
     #is_py3 = sys.version_info[0] >= 3
     """Run the DarkNet-to-ONNX conversion for YOLOv3-608."""
     '''
@@ -904,7 +907,8 @@ def main():
 
     # We want to populate our network with weights later, that's why we download those from
     # the official mirror (and verify the checksum):
-    weight_local_path = 'yolo{}.weights'.format(v_yolo)
+    weight_local_path = os.path.join(dir_onnx, 'yolo{}.weights'.format(v_yolo))
+    #print('weight_local_path : ', weight_local_path);   exit()
     checksum_ref = get_checksum_yolo(v_yolo, True)
     weights_file_path = download_file(
         #'yolov3.weights',
@@ -928,7 +932,7 @@ def main():
 
     # Serialize the generated ONNX graph to this file:
     #output_file_path = 'yolov3.onnx'
-    output_file_path = 'yolo{}_{}.onnx'.format(v_yolo, said)
+    output_file_path = os.path.join(dir_onnx, 'yolo{}_{}.onnx'.format(v_yolo, said))
     onnx.save(yolov3_model_def, output_file_path)
 
 if __name__ == '__main__':
